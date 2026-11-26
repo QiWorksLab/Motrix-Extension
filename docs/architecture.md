@@ -6,8 +6,8 @@
 2. content script 检查 `<video>` 和 `<source>`，读取当前页面播放器可见的标题、分辨率、时长和缩略图。
 3. background service worker 按 tabId 保存临时结果、按完整请求地址去重，并更新扩展图标徽标。
 4. popup 展示当前标签页结果并提供手动重新嗅探、播放器定位、批量选择。
-5. options 保存群晖地址、通信端口、身份验证/RPC Secret、自动嗅探和主题。
-6. 下载 API adapter 必须在 Motrix-SPK 发布 `docs/API.md` 后实现；在那之前不构造 endpoint、RPC token 语义或任务 JSON。
+5. options 保存服务地址、服务端提供的通信端口、自动嗅探和主题；身份验证材料由 Motrix-SPK 的 MBP1 配对流程管理。
+6. 下载 API adapter 按 Motrix-SPK `docs/API.md` 使用 MBP1 配对和 MDXP 0.10.0 schema。未认证前不调用任务接口。
 
 ## 检测规则
 

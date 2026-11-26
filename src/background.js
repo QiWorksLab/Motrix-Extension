@@ -5,10 +5,14 @@ const api=typeof browser!=='undefined'?browser:chrome;
 const action=api.action||api.browserAction;
 const STORE=api.storage.session||api.storage.local, PREFIX='tab:', MAX_ITEMS=120;
 const HEADER_ALLOW=new Set(['cookie','referer','origin','user-agent']);
+// Authentication material lives only in this bounded service-worker memory
+// cache. It is never serialized with the popup's media inventory.
+const requestContexts=new Map(), CONTEXT_TTL=30*60*1000, MAX_CONTEXTS=2400;
 const call=(fn,args=[])=>{if(typeof browser!=='undefined')return Promise.resolve(fn(...args));return new Promise((resolve,reject)=>fn(...args,value=>{const e=chrome.runtime.lastError;e?reject(new Error(e.message)):resolve(value);}));};
 const readTab=async id=>(await call(STORE.get,[PREFIX+id]))[PREFIX+id]||{items:{},pageTitle:'',updatedAt:0};
 async function writeTab(id,s){s.updatedAt=Date.now();await call(STORE.set,[{[PREFIX+id]:s}]);await updateBadge(id,s);}
 const headersFrom=arr=>Object.fromEntries((arr||[]).filter(h=>HEADER_ALLOW.has((h.name||'').toLowerCase())&&h.value).map(h=>[(h.name||'').toLowerCase(),h.value]));
+function rememberRequest(tabId,url,headers){const allowed=headersFrom(headers);if(!Object.keys(allowed).length)return;const key=`${tabId}\n${url}`;requestContexts.delete(key);requestContexts.set(key,{headers:allowed,observedAt:Date.now()});while(requestContexts.size>MAX_CONTEXTS)requestContexts.delete(requestContexts.keys().next().value);for(const [k,v] of requestContexts)if(Date.now()-v.observedAt>CONTEXT_TTL)requestContexts.delete(k);}
 async function setting(key){const x=await call(api.storage.local.get,['settings']);return x.settings?.[key];}
 async function updateBadge(id,s){const n=Object.values(s.items||{}).filter(x=>x.kind!=='segment'&&!x.protected).length;try{await call(action.setBadgeText,[{tabId:id,text:n?String(Math.min(n,99)):''}]);await call(action.setBadgeBackgroundColor,[{tabId:id,color:'#18a66a'}]);}catch{}}
 async function record(d,mime='',size=null,responseHeaders=[]){if(d.tabId<0||!d.url)return;try{if(!['http:','https:'].includes(new URL(d.url).protocol))return;}catch{return;}const current=await readTab(d.tabId);if(await setting('autoSniff')===false && (!current.manualUntil||current.manualUntil<Date.now()))return;
@@ -17,7 +21,8 @@ async function record(d,mime='',size=null,responseHeaders=[]){if(d.tabId<0||!d.u
  const url=MotrixSnifferCore.canonicalize(d.url);if(!url)return;const previous=s.items[url]||{};const response=headersFrom(responseHeaders);
  const disposition=(response['content-disposition']||'').match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i)?.[1];let name='';try{name=decodeURIComponent(disposition||'');}catch{}
  const pathname=new URL(url).pathname.split('/').pop();
- s.items[url]={...previous,url,kind,mime:mime||previous.mime||'',title:previous.title||name||s.pageTitle||pathname||'未知视频',pageUrl:d.documentUrl||d.initiator||'',tabId:d.tabId,quality:previous.quality||MotrixSnifferCore.qualityFromUrl(url),size:Number(size||response['content-length']||previous.size)||null,headers:{...(previous.headers||{}),...headersFrom(d.requestHeaders)},thumbnail:previous.thumbnail||'',duration:previous.duration||null,firstSeen:previous.firstSeen||Date.now(),lastSeen:Date.now(),taskState:previous.taskState||'idle'};
+ rememberRequest(d.tabId,url,d.requestHeaders);
+ s.items[url]={...previous,url,kind,mime:mime||previous.mime||'',title:previous.title||name||s.pageTitle||pathname||'未知视频',pageUrl:d.documentUrl||d.initiator||'',tabId:d.tabId,quality:previous.quality||MotrixSnifferCore.qualityFromUrl(url),size:Number(size||response['content-length']||previous.size)||null,thumbnail:previous.thumbnail||'',duration:previous.duration||null,firstSeen:previous.firstSeen||Date.now(),lastSeen:Date.now(),taskState:previous.taskState||'idle'};
  s.items=Object.fromEntries(Object.values(s.items).sort((a,b)=>b.lastSeen-a.lastSeen).slice(0,MAX_ITEMS).map(x=>[x.url,x]));await writeTab(d.tabId,s);
 }
 api.webRequest.onBeforeSendHeaders.addListener(d=>{void record(d);},{urls:['<all_urls>'],types:['media','xmlhttprequest','other']},['requestHeaders','extraHeaders']);
@@ -31,6 +36,6 @@ api.runtime.onMessage.addListener((msg,sender,sendResponse)=>{
  if(msg?.type==='MX_MARK_PREVIEW'&&Number.isInteger(msg.tabId)){void call(api.tabs.sendMessage,[msg.tabId,{type:'MX_HIGHLIGHT',url:msg.url}]).then(r=>sendResponse(r||{ok:false})).catch(()=>sendResponse({ok:false}));return true;}
  return false;
 });
-api.tabs.onRemoved.addListener(id=>{void call(STORE.remove,[PREFIX+id]);});
-api.tabs.onUpdated.addListener((id,change)=>{if(change.status==='loading'&&change.url){void call(STORE.remove,[PREFIX+id]);void updateBadge(id,{items:{}});}});
+api.tabs.onRemoved.addListener(id=>{void call(STORE.remove,[PREFIX+id]);for(const k of requestContexts.keys())if(k.startsWith(`${id}\n`))requestContexts.delete(k);});
+api.tabs.onUpdated.addListener((id,change)=>{if(change.status==='loading'&&change.url){void call(STORE.remove,[PREFIX+id]);for(const k of requestContexts.keys())if(k.startsWith(`${id}\n`))requestContexts.delete(k);void updateBadge(id,{items:{}});}});
 api.runtime.onStartup.addListener(()=>{void call(STORE.get,[null]).then(all=>call(STORE.remove,[Object.keys(all).filter(k=>k.startsWith(PREFIX))]));});
