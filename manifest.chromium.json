@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Motrix 视频嗅探",
+  "version": "0.1.0",
+  "description": "发现网页视频资源，并将下载任务发送至群晖 Motrix-SPK。",
+  "permissions": ["storage", "tabs", "webRequest", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {"service_worker": "src/background.js"},
+  "action": {"default_title": "Motrix 视频嗅探", "default_popup": "src/popup.html", "default_icon": {"16":"src/icons/16.png", "32":"src/icons/32.png", "48":"src/icons/48.png", "128":"src/icons/128.png"}},
+  "options_page": "src/options.html",
+  "content_scripts": [{"matches":["<all_urls>"],"js":["src/content.js"],"run_at":"document_idle","all_frames":true}],
+  "icons": {"16":"src/icons/16.png", "32":"src/icons/32.png", "48":"src/icons/48.png", "128":"src/icons/128.png"},
+  "browser_specific_settings": {"gecko": {"id":"motrix-extension@qiworkslab", "strict_min_version":"115.0"}}
+}

@@ -1,0 +1,17 @@
+{
+  "name": "motrix-extension",
+  "version": "0.1.0-dev",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/package.mjs all",
+    "build:chrome": "node scripts/package.mjs chrome",
+    "build:edge": "node scripts/package.mjs edge",
+    "build:firefox": "node scripts/package.mjs firefox",
+    "test": "node --test tests/core.test.cjs",
+    "fixtures": "node scripts/generate-fixtures.mjs",
+    "fixture:serve": "node scripts/fixture-server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
